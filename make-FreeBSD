@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+git submodule init
+git submodule update
+#cd ~/monero
+mkdir build
+mkdir build/release
+cd build/release
+
+ cmake -D BUILD_TESTS=OFF -D CMAKE_BUILD_TYPE=release ../..
+ make
