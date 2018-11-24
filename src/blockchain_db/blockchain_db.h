@@ -544,7 +544,7 @@ public:
   /**
    * @brief An empty constructor.
    */
-  BlockchainDB(): m_open(false) { }
+  BlockchainDB(): m_hardfork(NULL), m_open(false) { }
 
   /**
    * @brief An empty destructor.
@@ -1349,7 +1349,7 @@ public:
    *
    * @param details the details of the transaction to add
    */
-  virtual void add_txpool_tx(const transaction &tx, const txpool_tx_meta_t& details) = 0;
+  virtual void add_txpool_tx(const crypto::hash &txid, const cryptonote::blobdata &blob, const txpool_tx_meta_t& details) = 0;
 
   /**
    * @brief update a txpool transaction's metadata

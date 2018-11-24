@@ -45,6 +45,7 @@ using namespace epee;
 #include "storages/http_abstract_invoke.h"
 #include "crypto/hash.h"
 #include "rpc/rpc_args.h"
+#include "rpc/rpc_handler.h"
 #include "core_rpc_server_error_codes.h"
 #include "p2p/net_node.h"
 #include "version.h"
@@ -212,23 +213,15 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
-  static cryptonote::blobdata get_pruned_tx_blob(cryptonote::transaction &tx)
-  {
-    std::stringstream ss;
-    binary_archive<true> ba(ss);
-    bool r = tx.serialize_base(ba);
-    CHECK_AND_ASSERT_MES(r, cryptonote::blobdata(), "Failed to serialize rct signatures base");
-    return ss.str();
-  }
-  //------------------------------------------------------------------------------------------------------------------------------
-  static cryptonote::blobdata get_pruned_tx_json(cryptonote::transaction &tx)
-  {
-    std::stringstream ss;
-    json_archive<true> ar(ss);
-    bool r = tx.serialize_base(ar);
-    CHECK_AND_ASSERT_MES(r, cryptonote::blobdata(), "Failed to serialize rct signatures base");
-    return ss.str();
-  }
+  class pruned_transaction {
+    transaction& tx;
+  public:
+    pruned_transaction(transaction& tx) : tx(tx) {}
+    BEGIN_SERIALIZE_OBJECT()
+      bool r = tx.serialize_base(ar);
+      if (!r) return false;
+    END_SERIALIZE()
+  };
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_blocks(const COMMAND_RPC_GET_BLOCKS_FAST::request& req, COMMAND_RPC_GET_BLOCKS_FAST::response& res)
   {
@@ -564,10 +557,11 @@ namespace cryptonote
 
       crypto::hash tx_hash = *vhi++;
       e.tx_hash = *txhi++;
-      blobdata blob = req.prune ? get_pruned_tx_blob(tx) : t_serializable_object_to_blob(tx);
+      pruned_transaction pruned_tx{tx};
+      blobdata blob = req.prune ? t_serializable_object_to_blob(pruned_tx) : t_serializable_object_to_blob(tx);
       e.as_hex = string_tools::buff_to_hex_nodelimer(blob);
       if (req.decode_as_json)
-        e.as_json = req.prune ? get_pruned_tx_json(tx) : obj_to_json_str(tx);
+        e.as_json = req.prune ? obj_to_json_str(pruned_tx) : obj_to_json_str(tx);
       e.in_pool = pool_tx_hashes.find(tx_hash) != pool_tx_hashes.end();
       if (e.in_pool)
       {
@@ -707,7 +701,7 @@ namespace cryptonote
       res.status = "Failed";
       res.reason = "";
       if ((res.low_mixin = tvc.m_low_mixin))
-        add_reason(res.reason, "ring size too small");
+        add_reason(res.reason, "bad ring size");
       if ((res.double_spend = tvc.m_double_spend))
         add_reason(res.reason, "double spend");
       if ((res.invalid_input = tvc.m_invalid_input))
@@ -808,7 +802,14 @@ namespace cryptonote
   bool core_rpc_server::on_stop_mining(const COMMAND_RPC_STOP_MINING::request& req, COMMAND_RPC_STOP_MINING::response& res)
   {
     PERF_TIMER(on_stop_mining);
-    if(!m_core.get_miner().stop())
+    cryptonote::miner &miner= m_core.get_miner();
+    if(!miner.is_mining())
+    {
+      res.status = "Mining never started";
+      LOG_PRINT_L0(res.status);
+      return true;
+    }
+    if(!miner.stop())
     {
       res.status = "Failed, mining not stopped";
       LOG_PRINT_L0(res.status);
@@ -1017,7 +1018,7 @@ namespace cryptonote
     if(m_core.get_current_blockchain_height() <= h)
     {
       error_resp.code = CORE_RPC_ERROR_CODE_TOO_BIG_HEIGHT;
-      error_resp.message = std::string("Too big height: ") + std::to_string(h) + ", current blockchain height = " +  std::to_string(m_core.get_current_blockchain_height());
+      error_resp.message = std::string("Requested block height: ") + std::to_string(h) + " greater than current top block height: " +  std::to_string(m_core.get_current_blockchain_height() - 1);
     }
     res = string_tools::pod_to_hex(m_core.get_block_id_by_height(h));
     return true;
@@ -1464,7 +1465,7 @@ namespace cryptonote
     if(m_core.get_current_blockchain_height() <= req.height)
     {
       error_resp.code = CORE_RPC_ERROR_CODE_TOO_BIG_HEIGHT;
-      error_resp.message = std::string("Too big height: ") + std::to_string(req.height) + ", current blockchain height = " +  std::to_string(m_core.get_current_blockchain_height());
+      error_resp.message = std::string("Requested block height: ") + std::to_string(req.height) + " greater than current top block height: " +  std::to_string(m_core.get_current_blockchain_height() - 1);
       return false;
     }
     crypto::hash block_hash = m_core.get_block_id_by_height(req.height);
@@ -1509,7 +1510,7 @@ namespace cryptonote
       if(m_core.get_current_blockchain_height() <= req.height)
       {
         error_resp.code = CORE_RPC_ERROR_CODE_TOO_BIG_HEIGHT;
-        error_resp.message = std::string("Too big height: ") + std::to_string(req.height) + ", current blockchain height = " +  std::to_string(m_core.get_current_blockchain_height());
+        error_resp.message = std::string("Requested block height: ") + std::to_string(req.height) + " greater than current top block height: " +  std::to_string(m_core.get_current_blockchain_height() - 1);
         return false;
       }
       block_hash = m_core.get_block_id_by_height(req.height);
@@ -2124,62 +2125,15 @@ namespace cryptonote
       const uint64_t req_to_height = req.to_height ? req.to_height : (m_core.get_current_blockchain_height() - 1);
       for (uint64_t amount: req.amounts)
       {
-        static struct D
-        {
-          boost::mutex mutex;
-          std::vector<uint64_t> cached_distribution;
-          uint64_t cached_from, cached_to, cached_start_height, cached_base;
-          bool cached;
-          D(): cached_from(0), cached_to(0), cached_start_height(0), cached_base(0), cached(false) {}
-        } d;
-        boost::unique_lock<boost::mutex> lock(d.mutex);
-
-        if (d.cached && amount == 0 && d.cached_from == req.from_height && d.cached_to == req_to_height)
-        {
-          res.distributions.push_back({amount, d.cached_start_height, req.binary, d.cached_distribution, d.cached_base});
-          if (!req.cumulative)
-          {
-            auto &distribution = res.distributions.back().distribution;
-            for (size_t n = distribution.size() - 1; n > 0; --n)
-              distribution[n] -= distribution[n-1];
-            distribution[0] -= d.cached_base;
-          }
-          continue;
-        }
-
-        std::vector<uint64_t> distribution;
-        uint64_t start_height, base;
-        if (!m_core.get_output_distribution(amount, req.from_height, req_to_height, start_height, distribution, base))
+        auto data = rpc::RpcHandler::get_output_distribution([this](uint64_t amount, uint64_t from, uint64_t to, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base) { return m_core.get_output_distribution(amount, from, to, start_height, distribution, base); }, amount, req.from_height, req_to_height, req.cumulative);
+        if (!data)
         {
           error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-          error_resp.message = "Failed to get rct distribution";
+          error_resp.message = "Failed to get output distribution";
           return false;
         }
-        if (req_to_height > 0 && req_to_height >= req.from_height)
-        {
-          uint64_t offset = std::max(req.from_height, start_height);
-          if (offset <= req_to_height && req_to_height - offset + 1 < distribution.size())
-            distribution.resize(req_to_height - offset + 1);
-        }
 
-        if (amount == 0)
-        {
-          d.cached_from = req.from_height;
-          d.cached_to = req_to_height;
-          d.cached_distribution = distribution;
-          d.cached_start_height = start_height;
-          d.cached_base = base;
-          d.cached = true;
-        }
-
-        if (!req.cumulative)
-        {
-          for (size_t n = distribution.size() - 1; n > 0; --n)
-            distribution[n] -= distribution[n-1];
-          distribution[0] -= base;
-        }
-
-        res.distributions.push_back({amount, start_height, req.binary, std::move(distribution), base});
+        res.distributions.push_back({std::move(*data), amount, req.binary});
       }
     }
     catch (const std::exception &e)
