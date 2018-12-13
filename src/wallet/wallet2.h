@@ -37,6 +37,7 @@
 #include <boost/serialization/list.hpp>
 #include <boost/serialization/vector.hpp>
 #include <boost/serialization/deque.hpp>
+#include <boost/thread/lock_guard.hpp>
 #include <atomic>
 
 #include "include_base_utils.h"
@@ -49,6 +50,7 @@
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_core/cryptonote_tx_utils.h"
 #include "common/unordered_containers_boost_serialization.h"
+#include "common/util.h"
 #include "crypto/chacha.h"
 #include "crypto/hash.h"
 #include "ringct/rctTypes.h"
@@ -98,9 +100,24 @@ namespace tools
     virtual void on_lw_money_received(uint64_t height, const crypto::hash &txid, uint64_t amount) {}
     virtual void on_lw_unconfirmed_money_received(uint64_t height, const crypto::hash &txid, uint64_t amount) {}
     virtual void on_lw_money_spent(uint64_t height, const crypto::hash &txid, uint64_t amount) {}
+    // Device callbacks
+    virtual void on_button_request() {}
+    virtual void on_pin_request(epee::wipeable_string & pin) {}
+    virtual void on_passphrase_request(bool on_device, epee::wipeable_string & passphrase) {}
     // Common callbacks
     virtual void on_pool_tx_removed(const crypto::hash &txid) {}
     virtual ~i_wallet2_callback() {}
+  };
+
+  class wallet_device_callback : public hw::i_device_callback
+  {
+  public:
+    wallet_device_callback(wallet2 * wallet): wallet(wallet) {};
+    void on_button_request() override;
+    void on_pin_request(epee::wipeable_string & pin) override;
+    void on_passphrase_request(bool on_device, epee::wipeable_string & passphrase) override;
+  private:
+    wallet2 * wallet;
   };
 
   struct tx_dust_policy
@@ -154,6 +171,7 @@ namespace tools
   {
     friend class ::Serialization_portability_wallet_Test;
     friend class wallet_keys_unlocker;
+    friend class wallet_device_callback;
   public:
     static constexpr const std::chrono::seconds rpc_timeout = std::chrono::minutes(3) + std::chrono::seconds(30);
 
@@ -175,6 +193,7 @@ namespace tools
     static bool has_testnet_option(const boost::program_options::variables_map& vm);
     static bool has_stagenet_option(const boost::program_options::variables_map& vm);
     static std::string device_name_option(const boost::program_options::variables_map& vm);
+    static std::string device_derivation_path_option(const boost::program_options::variables_map &vm);
     static void init_options(boost::program_options::options_description& desc_params);
 
     //! Uses stdin and stdout. Returns a wallet2 if no errors.
@@ -374,7 +393,7 @@ namespace tools
     struct multisig_sig
     {
       rct::rctSig sigs;
-      crypto::public_key ignore;
+      std::unordered_set<crypto::public_key> ignore;
       std::unordered_set<rct::key> used_L;
       std::unordered_set<crypto::public_key> signing_keys;
       rct::multisig_out msout;
@@ -592,7 +611,7 @@ namespace tools
     /*!
      * \brief Finalizes creation of a multisig wallet
      */
-    bool finalize_multisig(const epee::wipeable_string &password, std::unordered_set<crypto::public_key> pkeys, std::vector<crypto::public_key> signers);
+    bool finalize_multisig(const epee::wipeable_string &password, const std::unordered_set<crypto::public_key> &pkeys, std::vector<crypto::public_key> signers);
     /*!
      * Get a packaged multisig information string
      */
@@ -793,6 +812,7 @@ namespace tools
     bool is_transfer_unlocked(uint64_t unlock_time, uint64_t block_height) const;
 
     uint64_t get_last_block_reward() const { return m_last_block_reward; }
+    uint64_t get_device_last_key_image_sync() const { return m_device_last_key_image_sync; }
 
     template <class t_archive>
     inline void serialize(t_archive &a, const unsigned int ver)
@@ -901,6 +921,9 @@ namespace tools
       if(ver < 26)
         return;
       a & m_tx_device;
+      if(ver < 27)
+        return;
+      a & m_device_last_key_image_sync;
     }
 
     /*!
@@ -962,6 +985,8 @@ namespace tools
     void confirm_non_default_ring_size(bool always) { m_confirm_non_default_ring_size = always; }
     const std::string & device_name() const { return m_device_name; }
     void device_name(const std::string & device_name) { m_device_name = device_name; }
+    const std::string & device_derivation_path() const { return m_device_derivation_path; }
+    void device_derivation_path(const std::string &device_derivation_path) { m_device_derivation_path = device_derivation_path; }
 
     bool get_tx_key(const crypto::hash &txid, crypto::secret_key &tx_key, std::vector<crypto::secret_key> &additional_tx_keys) const;
     void set_tx_key(const crypto::hash &txid, const crypto::secret_key &tx_key, const std::vector<crypto::secret_key> &additional_tx_keys);
@@ -1045,7 +1070,7 @@ namespace tools
      * \param  account_indices  Indices of accounts.
      * \param  tag              Tag's name. If empty, the accounts become untagged.
      */
-    void set_account_tag(const std::set<uint32_t> account_indices, const std::string& tag);
+    void set_account_tag(const std::set<uint32_t> &account_indices, const std::string& tag);
     /*!
      * \brief  Set the label of the given tag.
      * \param  tag            Tag's name (which must be non-empty).
@@ -1256,7 +1281,7 @@ namespace tools
     void scan_output(const cryptonote::transaction &tx, const crypto::public_key &tx_pub_key, size_t i, tx_scan_info_t &tx_scan_info, int &num_vouts_received, std::unordered_map<cryptonote::subaddress_index, uint64_t> &tx_money_got_in_outs, std::vector<size_t> &outs);
     void trim_hashchain();
     crypto::key_image get_multisig_composite_key_image(size_t n) const;
-    rct::multisig_kLRki get_multisig_composite_kLRki(size_t n, const crypto::public_key &ignore, std::unordered_set<rct::key> &used_L, std::unordered_set<rct::key> &new_used_L) const;
+    rct::multisig_kLRki get_multisig_composite_kLRki(size_t n,  const std::unordered_set<crypto::public_key> &ignore_set, std::unordered_set<rct::key> &used_L, std::unordered_set<rct::key> &new_used_L) const;
     rct::multisig_kLRki get_multisig_kLRki(size_t n, const rct::key &k) const;
     rct::key get_multisig_k(size_t idx, const std::unordered_set<rct::key> &used_L) const;
     void update_multisig_rescan_info(const std::vector<std::vector<rct::key>> &multisig_k, const std::vector<std::vector<tools::wallet2::multisig_info>> &info, size_t n);
@@ -1284,6 +1309,11 @@ namespace tools
 
     void setup_new_blockchain();
     void create_keys_file(const std::string &wallet_, bool watch_only, const epee::wipeable_string &password, bool create_address_file);
+
+    wallet_device_callback * get_device_callback();
+    void on_button_request();
+    void on_pin_request(epee::wipeable_string & pin);
+    void on_passphrase_request(bool on_device, epee::wipeable_string & passphrase);
 
     cryptonote::account_base m_account;
     boost::optional<epee::net_utils::http::login> m_daemon_login;
@@ -1363,6 +1393,8 @@ namespace tools
     std::unordered_set<crypto::hash> m_scanned_pool_txs[2];
     size_t m_subaddress_lookahead_major, m_subaddress_lookahead_minor;
     std::string m_device_name;
+    std::string m_device_derivation_path;
+    uint64_t m_device_last_key_image_sync;
 
     // Aux transaction data from device
     std::unordered_map<crypto::hash, std::string> m_tx_device;
@@ -1396,9 +1428,10 @@ namespace tools
     bool m_devices_registered;
 
     std::shared_ptr<tools::Notify> m_tx_notify;
+    std::unique_ptr<wallet_device_callback> m_device_callback;
   };
 }
-BOOST_CLASS_VERSION(tools::wallet2, 26)
+BOOST_CLASS_VERSION(tools::wallet2, 27)
 BOOST_CLASS_VERSION(tools::wallet2::transfer_details, 10)
 BOOST_CLASS_VERSION(tools::wallet2::multisig_info, 1)
 BOOST_CLASS_VERSION(tools::wallet2::multisig_info::LR, 0)
