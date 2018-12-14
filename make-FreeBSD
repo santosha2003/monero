@@ -2,6 +2,7 @@
 
 # make -C /usr/ports/lang/python3 install
 # env PYTHON3=/usr/local/bin/python3
+# pkg install cppzmq doxygen
 git commit -m "up"
 git pull origin master
 git push copy
