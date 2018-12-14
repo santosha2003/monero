@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 
+# make -C /usr/ports/lang/python3 install
+# env PYTHON3=/usr/local/bin/python3
+git commit -m "up"
+git pull origin master
+git push copy
+
 git submodule init
 git submodule update
 #cd ~/monero
@@ -7,5 +13,6 @@ mkdir build
 mkdir build/release
 cd build/release
 
- cmake -D BUILD_TESTS=OFF -D CMAKE_BUILD_TYPE=release ../..
+# cmake -D BUILD_TESTS=OFF -D WITHOUT_TREZOR -D CMAKE_BUILD_TYPE=release ../..
+cmake ../..
  make
