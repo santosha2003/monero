@@ -365,6 +365,8 @@ if (DATABASE STREQUAL "lmdb")
   message(STATUS "Using LMDB as default DB type")
   set(BLOCKCHAIN_DB DB_LMDB)
   add_definitions("-DDEFAULT_DB_TYPE=\"lmdb\"")
+ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_WANT_SEMUN")
+
 elseif (DATABASE STREQUAL "berkeleydb")
   find_package(BerkeleyDB)
   if(NOT BERKELEY_DB)

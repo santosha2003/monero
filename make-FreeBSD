@@ -3,7 +3,9 @@
 # make -C /usr/ports/lang/python3 install
 # env PYTHON3=/usr/local/bin/python3
 # pkg install cppzmq doxygen
-git commit -m "up"
+git add CMakeLists.txt
+git add make-FreeBSD
+git commit -m "FreeBSD 12 : SEM lmdb "
 git pull origin master
 git push copy
 
