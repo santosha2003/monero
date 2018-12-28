@@ -37,19 +37,27 @@
 
 find_package(Miniupnpc REQUIRED)
 
-message(STATUS "Using in-tree miniupnpc")
-add_subdirectory(miniupnp/miniupnpc)
-set_property(TARGET libminiupnpc-static PROPERTY FOLDER "external")
-if(MSVC)
-  set_property(TARGET libminiupnpc-static APPEND_STRING PROPERTY COMPILE_FLAGS " -wd4244 -wd4267")
-elseif(NOT MSVC)
-  set_property(TARGET libminiupnpc-static APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-undef -Wno-unused-result -Wno-unused-value")
-endif()
-if(CMAKE_SYSTEM_NAME MATCHES "NetBSD")
-	set_property(TARGET libminiupnpc-static APPEND_STRING PROPERTY COMPILE_FLAGS " -D_NETBSD_SOURCE")
+
+if(NOT MINIUPNPC_FOUND OR STATIC)
+  message(STATUS "Using in-tree miniupnpc")
+  add_subdirectory(miniupnp/miniupnpc)
+  set_property(TARGET libminiupnpc-static PROPERTY FOLDER "external")
+  if(MSVC)
+    set_property(TARGET libminiupnpc-static APPEND_STRING PROPERTY COMPILE_FLAGS " -wd4244 -wd4267")
+  elseif(NOT MSVC)
+    set_property(TARGET libminiupnpc-static APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-undef -Wno-unused-result -Wno-unused-value")
+  endif()
+  if(CMAKE_SYSTEM_NAME MATCHES "NetBSD")
+    set_property(TARGET libminiupnpc-static APPEND_STRING PROPERTY COMPILE_FLAGS " -D_NETBSD_SOURCE")
+  endif()
+
+  set(UPNP_LIBRARIES "libminiupnpc-static" PARENT_SCOPE)
+else()
+  message(STATUS "Found miniupnpc shared library (${MINIUPNP_LIBRARY})")
+  set(UPNP_LIBRARIES ${MINIUPNP_LIBRARY} PARENT_SCOPE)
+  set(UPNP_INCLUDE_DIR ${MINIUPNP_INCLUDE_DIR} PARENT_SCOPE)
 endif()
 
-set(UPNP_LIBRARIES "libminiupnpc-static" PARENT_SCOPE)
 
 find_package(Unbound)
 

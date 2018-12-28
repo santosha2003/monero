@@ -87,6 +87,3 @@ if(IOS)
 else()
     set(lib_folder lib)
 endif()
-
-install(FILES ${wallet_api_headers}
-    DESTINATION include/wallet/api)
