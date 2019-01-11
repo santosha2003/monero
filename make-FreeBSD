@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
-make -C /usr/ports/lang/python3 build deinstall install
+#make -C /usr/ports/lang/python3 build deinstall install
  env PYTHON3=/usr/local/bin/python3
 # pkg install -f cppzmq doxygen libsodium binutils python3 p5-Google-ProtocolBuffers p5-Google-Chart p5-Google-Data-JSON
- make -C /usr/ports/devel/boost-libs build deinstall install
+# make -C /usr/ports/devel/boost-libs build deinstall install
 git add make-FreeBSD CMakeLists.txt
 #git add CMakeLists.txt src/cryptonote_basic/miner.cpp
 #git add make-FreeBSD
