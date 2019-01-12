@@ -1,0 +1,11 @@
+make -C /usr/ports/net/miniupnpc build deinstall install
+make -C /usr/ports/net/norm  build deinstall install
+make -C /usr/ports/net/openpgm  build deinstall install
+make -C /usr/ports/security/libsodium  build deinstall install
+make -C /usr/ports/dns/unbound  build deinstall install
+make -C /usr/ports/devel/libunwind  build deinstall install
+make -C /usr/ports/net/libzmq4  build deinstall install
+make -C /usr/ports/devel/rapidjson  build deinstall install
+make -C /usr/ports/net/cppzmq  build deinstall install
+
+make
