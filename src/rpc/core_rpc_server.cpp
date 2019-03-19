@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018, The Monero Project
+// Copyright (c) 2014-2019, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -64,6 +64,11 @@ namespace
     if (!reasons.empty())
       reasons += ", ";
     reasons += reason;
+  }
+
+  uint64_t round_up(uint64_t value, uint64_t quantum)
+  {
+    return (value + quantum - 1) / quantum * quantum;
   }
 }
 
@@ -247,7 +252,9 @@ namespace cryptonote
       boost::shared_lock<boost::shared_mutex> lock(m_bootstrap_daemon_mutex);
       res.was_bootstrap_ever_used = m_was_bootstrap_ever_used;
     }
-    res.database_size = restricted ? 0 : m_core.get_blockchain_storage().get_db().get_database_size();
+    res.database_size = m_core.get_blockchain_storage().get_db().get_database_size();
+    if (restricted)
+      res.database_size = round_up(res.database_size, 5ull* 1024 * 1024 * 1024);
     res.update_available = restricted ? false : m_core.is_update_available();
     res.version = restricted ? "" : MONERO_VERSION;
     return true;
@@ -908,11 +915,30 @@ namespace cryptonote
     res.active = lMiner.is_mining();
     res.is_background_mining_enabled = lMiner.get_is_background_mining_enabled();
     
+    res.block_target = m_core.get_blockchain_storage().get_current_hard_fork_version() < 2 ? DIFFICULTY_TARGET_V1 : DIFFICULTY_TARGET_V2;
     if ( lMiner.is_mining() ) {
       res.speed = lMiner.get_speed();
       res.threads_count = lMiner.get_threads_count();
-      const account_public_address& lMiningAdr = lMiner.get_mining_address();
-      res.address = get_account_address_as_str(nettype(), false, lMiningAdr);
+      res.block_reward = lMiner.get_block_reward();
+    }
+    const account_public_address& lMiningAdr = lMiner.get_mining_address();
+    res.address = get_account_address_as_str(nettype(), false, lMiningAdr);
+    const uint8_t major_version = m_core.get_blockchain_storage().get_current_hard_fork_version();
+    const unsigned variant = major_version >= 7 ? major_version - 6 : 0;
+    switch (variant)
+    {
+      case 0: res.pow_algorithm = "Cryptonight"; break;
+      case 1: res.pow_algorithm = "CNv1 (Cryptonight variant 1)"; break;
+      case 2: case 3: res.pow_algorithm = "CNv2 (Cryptonight variant 2)"; break;
+      case 4: case 5: res.pow_algorithm = "CNv4 (Cryptonight variant 4)"; break;
+      default: res.pow_algorithm = "I'm not sure actually"; break;
+    }
+    if (res.is_background_mining_enabled)
+    {
+      res.bg_idle_threshold = lMiner.get_idle_threshold();
+      res.bg_min_idle_seconds = lMiner.get_min_idle_seconds();
+      res.bg_ignore_battery = lMiner.get_ignore_battery();
+      res.bg_target = lMiner.get_mining_target();
     }
 
     res.status = CORE_RPC_STATUS_OK;
@@ -943,9 +969,9 @@ namespace cryptonote
     {
       if (entry.adr.get_type_id() == epee::net_utils::ipv4_network_address::get_type_id())
         res.white_list.emplace_back(entry.id, entry.adr.as<epee::net_utils::ipv4_network_address>().ip(),
-            entry.adr.as<epee::net_utils::ipv4_network_address>().port(), entry.last_seen, entry.pruning_seed);
+            entry.adr.as<epee::net_utils::ipv4_network_address>().port(), entry.last_seen, entry.pruning_seed, entry.rpc_port);
       else
-        res.white_list.emplace_back(entry.id, entry.adr.str(), entry.last_seen, entry.pruning_seed);
+        res.white_list.emplace_back(entry.id, entry.adr.str(), entry.last_seen, entry.pruning_seed, entry.rpc_port);
     }
 
     res.gray_list.reserve(gray_list.size());
@@ -953,9 +979,9 @@ namespace cryptonote
     {
       if (entry.adr.get_type_id() == epee::net_utils::ipv4_network_address::get_type_id())
         res.gray_list.emplace_back(entry.id, entry.adr.as<epee::net_utils::ipv4_network_address>().ip(),
-            entry.adr.as<epee::net_utils::ipv4_network_address>().port(), entry.last_seen, entry.pruning_seed);
+            entry.adr.as<epee::net_utils::ipv4_network_address>().port(), entry.last_seen, entry.pruning_seed, entry.rpc_port);
       else
-        res.gray_list.emplace_back(entry.id, entry.adr.str(), entry.last_seen, entry.pruning_seed);
+        res.gray_list.emplace_back(entry.id, entry.adr.str(), entry.last_seen, entry.pruning_seed, entry.rpc_port);
     }
 
     res.status = CORE_RPC_STATUS_OK;

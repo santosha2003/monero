@@ -2,7 +2,7 @@
 /// @author rfree (current maintainer/user in monero.cc project - most of code is from CryptoNote)
 /// @brief This is the original cryptonote protocol network-events handler, modified by us
 
-// Copyright (c) 2014-2018, The Monero Project
+// Copyright (c) 2014-2019, The Monero Project
 //
 // All rights reserved.
 //
@@ -231,6 +231,7 @@ namespace cryptonote
         cnx.ip = cnx.host;
         cnx.port = std::to_string(cntxt.m_remote_address.as<epee::net_utils::ipv4_network_address>().port());
       }
+      cnx.rpc_port = cntxt.m_rpc_port;
 
       std::stringstream peer_id_str;
       peer_id_str << std::hex << std::setw(16) << peer_id;

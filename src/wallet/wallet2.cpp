@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018, The Monero Project
+// Copyright (c) 2014-2019, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -793,9 +793,8 @@ uint64_t calculate_fee(bool use_per_byte_fee, const cryptonote::transaction &tx,
     return calculate_fee(base_fee, blob_size, fee_multiplier);
 }
 
-crypto::hash8 get_short_payment_id(const tools::wallet2::pending_tx &ptx, hw::device &hwdev)
+bool get_short_payment_id(crypto::hash8 &payment_id8, const tools::wallet2::pending_tx &ptx, hw::device &hwdev)
 {
-  crypto::hash8 payment_id8 = null_hash8;
   std::vector<tx_extra_field> tx_extra_fields;
   parse_tx_extra(ptx.tx.extra, tx_extra_fields); // ok if partially parsed
   cryptonote::tx_extra_nonce extra_nonce;
@@ -806,19 +805,19 @@ crypto::hash8 get_short_payment_id(const tools::wallet2::pending_tx &ptx, hw::de
       if (ptx.dests.empty())
       {
         MWARNING("Encrypted payment id found, but no destinations public key, cannot decrypt");
-        return crypto::null_hash8;
+        return false;
       }
-      hwdev.decrypt_payment_id(payment_id8, ptx.dests[0].addr.m_view_public_key, ptx.tx_key);
+      return hwdev.decrypt_payment_id(payment_id8, ptx.dests[0].addr.m_view_public_key, ptx.tx_key);
     }
   }
-  return payment_id8;
+  return false;
 }
 
 tools::wallet2::tx_construction_data get_construction_data_with_decrypted_short_payment_id(const tools::wallet2::pending_tx &ptx, hw::device &hwdev)
 {
   tools::wallet2::tx_construction_data construction_data = ptx.construction_data;
-  crypto::hash8 payment_id = get_short_payment_id(ptx,hwdev);
-  if (payment_id != null_hash8)
+  crypto::hash8 payment_id = null_hash8;
+  if (get_short_payment_id(payment_id, ptx, hwdev))
   {
     // Remove encrypted
     remove_field_from_tx_extra(construction_data.extra, typeid(cryptonote::tx_extra_nonce));
@@ -1495,11 +1494,17 @@ void wallet2::scan_output(const cryptonote::transaction &tx, bool miner_tx, cons
   }
 
   THROW_WALLET_EXCEPTION_IF(std::find(outs.begin(), outs.end(), i) != outs.end(), error::wallet_internal_error, "Same output cannot be added twice");
-  outs.push_back(i);
   if (tx_scan_info.money_transfered == 0 && !miner_tx)
   {
     tx_scan_info.money_transfered = tools::decodeRct(tx.rct_signatures, tx_scan_info.received->derivation, i, tx_scan_info.mask, m_account.get_device());
   }
+  if (tx_scan_info.money_transfered == 0)
+  {
+    MERROR("Invalid output amount, skipping");
+    tx_scan_info.error = true;
+    return;
+  }
+  outs.push_back(i);
   THROW_WALLET_EXCEPTION_IF(tx_money_got_in_outs[tx_scan_info.received->index] >= std::numeric_limits<uint64_t>::max() - tx_scan_info.money_transfered,
       error::wallet_internal_error, "Overflow in received amounts");
   tx_money_got_in_outs[tx_scan_info.received->index] += tx_scan_info.money_transfered;
@@ -9143,6 +9148,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
       {
         const size_t estimated_rct_tx_weight = estimate_tx_weight(use_rct, tx.selected_transfers.size(), fake_outs_count, tx.dsts.size()+1, extra.size(), bulletproof);
         try_tx = dsts.empty() || (estimated_rct_tx_weight >= TX_WEIGHT_TARGET(upper_transaction_weight_limit));
+        THROW_WALLET_EXCEPTION_IF(try_tx && tx.dsts.empty(), error::tx_too_big, estimated_rct_tx_weight, upper_transaction_weight_limit);
       }
     }
 
