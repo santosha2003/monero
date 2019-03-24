@@ -24,6 +24,7 @@ git submodule update
 #cd ~/monero
 mkdir build
 mkdir build/release
+gmake
 cd build/release
 #export CC=clang
 #export CXX=clang++
