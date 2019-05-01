@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+#+ freebsd release 12 boost libs 1.69
+# make -C /usr/ports/devel/git build deinstall install
+# make -C /usr/ports/lang/python3 build deinstall install
+
+#git fetch upstream
+#git checkout master
+#git merge upstream/master
+
+
+ env PYTHON3=/usr/local/bin/python3
+# pkg install -f cppzmq doxygen libsodium binutils python3 p5-Google-ProtocolBuffers p5-Google-Chart p5-Google-Data-JSON
+# make -C /usr/ports/devel/boost-libs build deinstall install
+git add make-FreeBSD CMakeLists.txt
+#git add CMakeLists.txt src/cryptonote_basic/miner.cpp
+#git add make-FreeBSD
+git commit -m "FreeBSD 12 :"
+git pull --no-edit origin master
+git push copy
+
+git submodule init
+git submodule update
+#cd ~/monero
+mkdir build
+mkdir build/release
+gmake
+cd build/release
+#export CC=clang
+#export CXX=clang++
+# FreeBSD 12 GNU linker (pkg ins binutils) -DCMAKE_LINKER=/usr/local/bin/ld
+ cmake -D MANUAL_SUBMODULE=1 -D BUILD_TESTS=OFF -D CMAKE_BUILD_TYPE=release ../..
+ # -DCMAKE_LINKER=/usr/local/bin/ld  -D CMAKE_BUILD_TYPE=release ../..
+#cmake ../..
+make
