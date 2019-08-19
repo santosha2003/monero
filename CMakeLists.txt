@@ -653,7 +653,7 @@ else()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-strict-aliasing")
 
   # if those don't work for your compiler, single it out where appropriate
-  if(CMAKE_BUILD_TYPE STREQUAL "Release")
+  if(CMAKE_BUILD_TYPE STREQUAL "Release" AND NOT OPENBSD)
     set(C_SECURITY_FLAGS "${C_SECURITY_FLAGS} -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=1")
     set(CXX_SECURITY_FLAGS "${CXX_SECURITY_FLAGS} -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=1")
   endif()
@@ -665,7 +665,7 @@ else()
   add_cxx_flag_if_supported(-Wformat-security CXX_SECURITY_FLAGS)
 
   # -fstack-protector
-  if (NOT WIN32)
+  if (NOT WIN32 AND NOT OPENBSD)
     add_c_flag_if_supported(-fstack-protector C_SECURITY_FLAGS)
     add_cxx_flag_if_supported(-fstack-protector CXX_SECURITY_FLAGS)
     add_c_flag_if_supported(-fstack-protector-strong C_SECURITY_FLAGS)
@@ -673,7 +673,7 @@ else()
   endif()
 
   # New in GCC 8.2
-  if (NOT WIN32)
+  if (NOT WIN32 AND NOT OPENBSD)
     add_c_flag_if_supported(-fcf-protection=full C_SECURITY_FLAGS)
     add_cxx_flag_if_supported(-fcf-protection=full CXX_SECURITY_FLAGS)
     add_c_flag_if_supported(-fstack-clash-protection C_SECURITY_FLAGS)
@@ -1005,6 +1005,7 @@ endif()
 add_subdirectory(contrib)
 add_subdirectory(src)
 
+find_package(PythonInterp)
 if(BUILD_TESTS)
   message(STATUS "Building tests")
   add_subdirectory(tests)
@@ -1049,5 +1050,3 @@ option(INSTALL_VENDORED_LIBUNBOUND "Install libunbound binary built from source 
 
 
 CHECK_C_COMPILER_FLAG(-std=c11 HAVE_C11)
-
-find_package(PythonInterp)
