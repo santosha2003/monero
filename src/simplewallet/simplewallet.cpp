@@ -201,11 +201,11 @@ namespace
   const char* USAGE_SET_DESCRIPTION("set_description [free text note]");
   const char* USAGE_SIGN("sign <filename>");
   const char* USAGE_VERIFY("verify <filename> <address> <signature>");
-  const char* USAGE_EXPORT_KEY_IMAGES("export_key_images <filename>");
+  const char* USAGE_EXPORT_KEY_IMAGES("export_key_images [all] <filename>");
   const char* USAGE_IMPORT_KEY_IMAGES("import_key_images <filename>");
   const char* USAGE_HW_KEY_IMAGES_SYNC("hw_key_images_sync");
   const char* USAGE_HW_RECONNECT("hw_reconnect");
-  const char* USAGE_EXPORT_OUTPUTS("export_outputs <filename>");
+  const char* USAGE_EXPORT_OUTPUTS("export_outputs [all] <filename>");
   const char* USAGE_IMPORT_OUTPUTS("import_outputs <filename>");
   const char* USAGE_SHOW_TRANSFER("show_transfer <txid>");
   const char* USAGE_MAKE_MULTISIG("make_multisig <threshold> <string1> [<string>...]");
@@ -801,6 +801,12 @@ bool simple_wallet::seed(const std::vector<std::string> &args/* = std::vector<st
 bool simple_wallet::encrypted_seed(const std::vector<std::string> &args/* = std::vector<std::string>()*/)
 {
   return print_seed(true);
+}
+
+bool simple_wallet::restore_height(const std::vector<std::string> &args/* = std::vector<std::string>()*/)
+{
+  success_msg_writer() << m_wallet->get_refresh_from_block_height();
+  return true;
 }
 
 bool simple_wallet::seed_set_language(const std::vector<std::string> &args/* = std::vector<std::string>()*/)
@@ -2689,7 +2695,7 @@ bool simple_wallet::set_device_name(const std::vector<std::string> &args/* = std
       return true;
     }
 
-    m_wallet->device_name(args[0]);
+    m_wallet->device_name(args[1]);
     bool r = false;
     try {
       r = m_wallet->reconnect_device();
@@ -2845,6 +2851,9 @@ simple_wallet::simple_wallet()
   m_cmd_binder.set_handler("seed",
                            boost::bind(&simple_wallet::seed, this, _1),
                            tr("Display the Electrum-style mnemonic seed"));
+  m_cmd_binder.set_handler("restore_height",
+                           boost::bind(&simple_wallet::restore_height, this, _1),
+                           tr("Display the restore height"));
   m_cmd_binder.set_handler("set",
                            boost::bind(&simple_wallet::set_variable, this, _1),
                            tr(USAGE_SET_VARIABLE),
@@ -2881,6 +2890,8 @@ simple_wallet::simple_wallet()
                                   "  Whether to warn if there is transaction backlog.\n "
                                   "confirm-backlog-threshold [n]\n "
                                   "  Set a threshold for confirm-backlog to only warn if the transaction backlog is greater than n blocks.\n "
+                                  "confirm-export-overwrite <1|0>\n "
+                                  "  Whether to warn if the file to be exported already exists.\n "
                                   "refresh-from-block-height [n]\n "
                                   "  Set the height before which to ignore blocks.\n "
                                   "auto-low-priority <1|0>\n "
@@ -2888,12 +2899,20 @@ simple_wallet::simple_wallet()
                                   "segregate-pre-fork-outputs <1|0>\n "
                                   "  Set this if you intend to spend outputs on both Monero AND a key reusing fork.\n "
                                   "key-reuse-mitigation2 <1|0>\n "
-                                  "  Set this if you are not sure whether you will spend on a key reusing Monero fork later.\n"
+                                  "  Set this if you are not sure whether you will spend on a key reusing Monero fork later.\n "
                                   "subaddress-lookahead <major>:<minor>\n "
                                   "  Set the lookahead sizes for the subaddress hash table.\n "
                                   "  Set this if you are not sure whether you will spend on a key reusing Monero fork later.\n "
                                   "segregation-height <n>\n "
-                                  "  Set to the height of a key reusing fork you want to use, 0 to use default."));
+                                  "  Set to the height of a key reusing fork you want to use, 0 to use default.\n "
+                                  "ignore-fractional-outputs <1|0>\n "
+                                  "  Whether to ignore fractional outputs that result in net loss when spending due to fee.\n "
+                                  "track-uses <1|0>\n "
+                                  "  Whether to keep track of owned outputs uses.\n "
+                                  "setup-background-mining <1|0>\n "
+                                  "  Whether to enable background mining. Set this to support the network and to get a chance to receive new monero.\n "
+                                  "device-name <device_name[:device_spec]>\n "
+                                  "  Device name for hardware wallet."));
   m_cmd_binder.set_handler("encrypted_seed",
                            boost::bind(&simple_wallet::encrypted_seed, this, _1),
                            tr("Display the encrypted Electrum-style mnemonic seed."));
@@ -3130,7 +3149,7 @@ simple_wallet::simple_wallet()
                            tr("Available options:\n "
                                   "auto-send <1|0>\n "
                                   "  Whether to automatically send newly generated messages right away.\n "));
-  m_cmd_binder.set_handler("mms send_message_config",
+  m_cmd_binder.set_handler("mms send_signer_config",
                            boost::bind(&simple_wallet::mms, this, _1),
                            tr(USAGE_MMS_SEND_SIGNER_CONFIG),
                            tr("Send completed signer config to all other authorized signers"));
@@ -3257,8 +3276,8 @@ bool simple_wallet::set_variable(const std::vector<std::string> &args)
     success_msg_writer() << "segregation-height = " << m_wallet->segregation_height();
     success_msg_writer() << "ignore-fractional-outputs = " << m_wallet->ignore_fractional_outputs();
     success_msg_writer() << "track-uses = " << m_wallet->track_uses();
-    success_msg_writer() << "setup-background-mining = " << setup_background_mining_string + tr(" (set this to support the network and to get a chance to receive new monero)");
-    success_msg_writer() << "device_name = " << m_wallet->device_name();
+    success_msg_writer() << "setup-background-mining = " << setup_background_mining_string;
+    success_msg_writer() << "device-name = " << m_wallet->device_name();
     return true;
   }
   else
@@ -7811,7 +7830,7 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
       uint64_t fee = pd.m_amount_in - pd.m_amount_out;
       std::vector<std::pair<std::string, uint64_t>> destinations;
       for (const auto &d: pd.m_dests) {
-        destinations.push_back({get_account_address_as_str(m_wallet->nettype(), d.is_subaddress, d.addr), d.amount});
+        destinations.push_back({d.address(m_wallet->nettype(), pd.m_payment_id), d.amount});
       }
       std::string payment_id = string_tools::pod_to_hex(i->second.m_payment_id);
       if (payment_id.substr(16).find_first_not_of('0') == std::string::npos)
@@ -7887,7 +7906,7 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
       uint64_t fee = amount - pd.m_amount_out;
       std::vector<std::pair<std::string, uint64_t>> destinations;
       for (const auto &d: pd.m_dests) {
-        destinations.push_back({get_account_address_as_str(m_wallet->nettype(), d.is_subaddress, d.addr), d.amount});
+        destinations.push_back({d.address(m_wallet->nettype(), pd.m_payment_id), d.amount});
       }
       std::string payment_id = string_tools::pod_to_hex(i->second.m_payment_id);
       if (payment_id.substr(16).find_first_not_of('0') == std::string::npos)
@@ -9044,21 +9063,31 @@ bool simple_wallet::verify(const std::vector<std::string> &args)
   return true;
 }
 //----------------------------------------------------------------------------------------------------
-bool simple_wallet::export_key_images(const std::vector<std::string> &args)
+bool simple_wallet::export_key_images(const std::vector<std::string> &args_)
 {
   if (m_wallet->key_on_device())
   {
     fail_msg_writer() << tr("command not supported by HW wallet");
     return true;
   }
-  if (args.size() != 1)
-  {
-    PRINT_USAGE(USAGE_EXPORT_KEY_IMAGES);
-    return true;
-  }
+  auto args = args_;
+
   if (m_wallet->watch_only())
   {
     fail_msg_writer() << tr("wallet is watch-only and cannot export key images");
+    return true;
+  }
+
+  bool all = false;
+  if (args.size() >= 2 && args[0] == "all")
+  {
+    all = true;
+    args.erase(args.begin());
+  }
+
+  if (args.size() != 1)
+  {
+    PRINT_USAGE(USAGE_EXPORT_KEY_IMAGES);
     return true;
   }
 
@@ -9070,7 +9099,7 @@ bool simple_wallet::export_key_images(const std::vector<std::string> &args)
 
   try
   {
-    if (!m_wallet->export_key_images(filename))
+    if (!m_wallet->export_key_images(filename, all))
     {
       fail_msg_writer() << tr("failed to save file ") << filename;
       return true;
@@ -9195,13 +9224,22 @@ bool simple_wallet::hw_reconnect(const std::vector<std::string> &args)
   return true;
 }
 //----------------------------------------------------------------------------------------------------
-bool simple_wallet::export_outputs(const std::vector<std::string> &args)
+bool simple_wallet::export_outputs(const std::vector<std::string> &args_)
 {
   if (m_wallet->key_on_device())
   {
     fail_msg_writer() << tr("command not supported by HW wallet");
     return true;
   }
+  auto args = args_;
+
+  bool all = false;
+  if (args.size() >= 2 && args[0] == "all")
+  {
+    all = true;
+    args.erase(args.begin());
+  }
+
   if (args.size() != 1)
   {
     PRINT_USAGE(USAGE_EXPORT_OUTPUTS);
@@ -9216,7 +9254,7 @@ bool simple_wallet::export_outputs(const std::vector<std::string> &args)
 
   try
   {
-    std::string data = m_wallet->export_outputs_to_str();
+    std::string data = m_wallet->export_outputs_to_str(all);
     bool r = epee::file_io_utils::save_string_to_file(filename, data);
     if (!r)
     {
@@ -9343,7 +9381,7 @@ bool simple_wallet::show_transfer(const std::vector<std::string> &args)
       for (const auto &d: pd.m_dests) {
         if (!dests.empty())
           dests += ", ";
-        dests +=  get_account_address_as_str(m_wallet->nettype(), d.is_subaddress, d.addr) + ": " + print_money(d.amount);
+        dests +=  d.address(m_wallet->nettype(), pd.m_payment_id) + ": " + print_money(d.amount);
       }
       std::string payment_id = string_tools::pod_to_hex(i->second.m_payment_id);
       if (payment_id.substr(16).find_first_not_of('0') == std::string::npos)
