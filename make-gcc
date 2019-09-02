@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+
+# make -C /usr/ports/lang/python3 build deinstall install
+ env PYTHON3=/usr/local/bin/python3
+ pkg install cppzmq doxygen libsodium gcc p5-Google-ProtocolBuffers p5-Google-Chart p5-Google-Data-JSON
+#git add CMakeLists.txt src/cryptonote_basic/miner.cpp
+#git add make-FreeBSD
+git commit -m "FreeBSD 12 : SEM lmdb wallet miniupnpc patch "
+git pull origin master
+git push copy
+
+git submodule init
+git submodule update
+#cd ~/monero
+mkdir build
+mkdir build/release
+cd build/release
+export CC=/usr/local/bin/gcc
+export CXX=/usr/local/bin/g++
+# FreeBSD 12 GNU linker (pkg ins binutils) -DCMAKE_LINKER=/usr/local/bin/ld
+ cmake -D BUILD_TESTS=OFF   -D CMAKE_BUILD_TYPE=release ../..
+#cmake ../..
+ make

@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2019, The Monero Project
+# Copyright (c) 2014-2018, The Monero Project
 # 
 # All rights reserved.
 # 
@@ -32,7 +32,7 @@ function (write_static_version_header hash)
 endfunction ()
 
 find_package(Git QUIET)
-if (TRUE)
+if ("$Format:$" STREQUAL "")
   # We're in a tarball; use hard-coded variables.
   write_static_version_header("release")
 elseif (GIT_FOUND OR Git_FOUND)

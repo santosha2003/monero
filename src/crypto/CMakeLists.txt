@@ -49,9 +49,15 @@ set(crypto_sources
   CryptonightR_JIT.c
   tree-hash.c)
 
+<<<<<<< HEAD
 if(ARCH_ID STREQUAL "i386" OR ARCH_ID STREQUAL "x86_64" OR ARCH_ID STREQUAL "x86-64" OR ARCH_ID STREQUAL "amd64")
 list(APPEND crypto_sources CryptonightR_template.S)
 endif()
+=======
+if(ARCH_ID STREQUAL "x86_64" OR ARCH_ID STREQUAL "x86-64" OR ARCH_ID STREQUAL "amd64")
+ list(APPEND crypto_sources CryptonightR_template.S)
+ endif()
+>>>>>>> e04fd0dc01a2b950705ea78c35cf91f5a83e5465
 
 set(crypto_headers)
 

@@ -12,38 +12,30 @@
  env PYTHON3=/usr/local/bin/python3
 # pkg install -f cppzmq doxygen libsodium binutils python3 p5-Google-ProtocolBuffers p5-Google-Chart p5-Google-Data-JSON
 # make -C /usr/ports/devel/boost-libs build deinstall install
-git add make-FreeBSD CMakeLists.txt
+#git add make-FreeBSD CMakeLists.txt
 #git add CMakeLists.txt src/cryptonote_basic/miner.cpp
 #git add make-FreeBSD
-<<<<<<< HEAD
 #git commit -m "FreeBSD 12 "
 
+# sudo apt install libboost-all-dev
+
+git checkout -f
 git pull --no-edit origin master
 #git push copy
-=======
-git commit -m "FreeBSD 12 :"
-git pull --no-edit origin master
-git push copy
->>>>>>> e04fd0dc01a2b950705ea78c35cf91f5a83e5465
 
 git submodule init
-git submodule update
+git submodule update --init --force
+#external/miniupnp
 #cd ~/monero
 mkdir build
 mkdir build/release
-gmake
+#gmake
 cd build/release
 #export CC=clang
 #export CXX=clang++
 # FreeBSD 12 GNU linker (pkg ins binutils) -DCMAKE_LINKER=/usr/local/bin/ld
-<<<<<<< HEAD
- cmake -D MANUAL_SUBMODULE=1 -D BUILD_TESTS=OFF -D CMAKE_BUILD_TYPE=release ../..
+ cmake  -D BUILD_TESTS=OFF -D CMAKE_BUILD_TYPE=release ../..
+#-D MANUAL_SUBMODULE=1
  # -DCMAKE_LINKER=/usr/local/bin/ld  -D CMAKE_BUILD_TYPE=release ../..
 #cmake ../..
 make
-=======
- cmake -D BUILD_TESTS=OFF -D CMAKE_BUILD_TYPE=release ../..
- # -DCMAKE_LINKER=/usr/local/bin/ld  -D CMAKE_BUILD_TYPE=release ../..
-#cmake ../..
- make
->>>>>>> e04fd0dc01a2b950705ea78c35cf91f5a83e5465
